@@ -13,7 +13,6 @@ class SupabaseTicketDatasource {
 
   Future<List<TicketModel>> getTickets({String? userId}) async {
     List<Map<String, dynamic>> data;
-
     if (userId != null) {
       data = await _client
           .from(SupabaseConstants.ticketsTable)
@@ -26,7 +25,6 @@ class SupabaseTicketDatasource {
           .select('*, profiles!created_by(full_name), assignee:profiles!assigned_to(full_name)')
           .order('created_at', ascending: false);
     }
-
     return data.map((e) => TicketModel.fromJson(e)).toList();
   }
 
@@ -78,15 +76,40 @@ class SupabaseTicketDatasource {
   Future<void> updateTicketStatus(String ticketId, String status) async {
     await _client
         .from(SupabaseConstants.ticketsTable)
-        .update({'status': status, 'updated_at': DateTime.now().toIso8601String()})
+        .update({
+          'status': status, 
+          'updated_at': DateTime.now().toIso8601String()
+        })
         .eq('id', ticketId);
   }
 
   Future<void> assignTicket(String ticketId, String assigneeId) async {
     await _client
         .from(SupabaseConstants.ticketsTable)
-        .update({'assigned_to': assigneeId, 'updated_at': DateTime.now().toIso8601String()})
+        .update({
+          'assigned_to': assigneeId, 
+          'updated_at': DateTime.now().toIso8601String()
+        })
         .eq('id', ticketId);
+  }
+
+  // ── LOGS ─────────────────────────────────────────────────
+
+  Future<void> addLog(String ticketId, String authorName, String action) async {
+    await _client.from('ticket_logs').insert({
+      'ticket_id': ticketId,
+      'author_name': authorName,
+      'action': action,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getTicketLogs(String ticketId) async {
+    final data = await _client
+        .from('ticket_logs')
+        .select()
+        .eq('ticket_id', ticketId)
+        .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(data);
   }
 
   // ── STATISTIK ─────────────────────────────────────────────
@@ -120,15 +143,14 @@ class SupabaseTicketDatasource {
     return stats;
   }
 
-  // ── KOMENTAR ──────────────────────────────────────────────
+  // ── OTHERS ───────────────────────────────────────────────
 
-  Future<List<CommentModel>> getComments(String ticketId) async {
+  Future<List<Map<String, dynamic>>> getAgents() async {
     final data = await _client
-        .from(SupabaseConstants.commentsTable)
-        .select('*, profiles!author_id(full_name)')
-        .eq('ticket_id', ticketId)
-        .order('created_at');
-    return (data as List).map((e) => CommentModel.fromJson(e as Map<String, dynamic>)).toList();
+        .from(SupabaseConstants.profilesTable)
+        .select('id, full_name, role')
+        .or('role.eq.helpdesk,role.eq.admin');
+    return List<Map<String, dynamic>>.from(data);
   }
 
   Future<CommentModel> addComment({
@@ -146,5 +168,14 @@ class SupabaseTicketDatasource {
         .select('*, profiles!author_id(full_name)')
         .single();
     return CommentModel.fromJson(data);
+  }
+
+  Future<List<CommentModel>> getComments(String ticketId) async {
+    final data = await _client
+        .from(SupabaseConstants.commentsTable)
+        .select('*, profiles!author_id(full_name)')
+        .eq('ticket_id', ticketId)
+        .order('created_at');
+    return (data as List).map((e) => CommentModel.fromJson(e as Map<String, dynamic>)).toList();
   }
 }

@@ -43,6 +43,7 @@ class App extends ConsumerWidget {
     
     return MaterialApp.router(
       title: 'E-Ticketing Helpdesk',
+      debugShowCheckedModeBanner: false,
       theme:  AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,

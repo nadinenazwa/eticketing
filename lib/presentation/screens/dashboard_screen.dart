@@ -45,7 +45,7 @@ class DashboardScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Halo, ${user?.fullName ?? 'User'} 👋',
+                      'Halo, ${user?.fullName ?? 'User'}',
                       style: theme.textTheme.titleLarge
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
@@ -55,7 +55,7 @@ class DashboardScreen extends ConsumerWidget {
                           ? 'Panel Helpdesk / Admin'
                           : 'Pantau tiket kamu di sini',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        color: theme.colorScheme.onSurface.withOpacity(0.5),
                       ),
                     ),
                   ],
@@ -149,39 +149,43 @@ class _StatsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 1.6,
-      children: [
-        _StatCard(
-          label: 'Total Tiket',
-          value: '${stats['total'] ?? 0}',
-          icon: Icons.confirmation_num_outlined,
-          color: AppTheme.primary,
-        ),
-        _StatCard(
-          label: 'Open',
-          value: '${stats['open'] ?? 0}',
-          icon: Icons.radio_button_unchecked,
-          color: AppTheme.statusColor('open'),
-        ),
-        _StatCard(
-          label: 'In Progress',
-          value: '${stats['in_progress'] ?? 0}',
-          icon: Icons.hourglass_bottom_rounded,
-          color: AppTheme.statusColor('in_progress'),
-        ),
-        _StatCard(
-          label: 'Resolved',
-          value: '${stats['resolved'] ?? 0}',
-          icon: Icons.check_circle_outline,
-          color: AppTheme.statusColor('resolved'),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: (constraints.maxWidth / 2) / 85,
+          children: [
+            _StatCard(
+              label: 'Total Tiket',
+              value: '${stats['total'] ?? 0}',
+              icon: Icons.confirmation_num_outlined,
+              color: AppTheme.primary,
+            ),
+            _StatCard(
+              label: 'Open',
+              value: '${stats['open'] ?? 0}',
+              icon: Icons.radio_button_unchecked,
+              color: AppTheme.statusColor('open'),
+            ),
+            _StatCard(
+              label: 'In Progress',
+              value: '${stats['in_progress'] ?? 0}',
+              icon: Icons.hourglass_bottom_rounded,
+              color: AppTheme.statusColor('in_progress'),
+            ),
+            _StatCard(
+              label: 'Resolved',
+              value: '${stats['resolved'] ?? 0}',
+              icon: Icons.check_circle_outline,
+              color: AppTheme.statusColor('resolved'),
+            ),
+          ],
+        );
+      }
     );
   }
 }
@@ -202,38 +206,46 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
+      margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
             Container(
-              width: 42,
-              height: 42,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
+                color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 22),
+              child: Icon(icon, color: color, size: 20),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  value,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: color,
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      value,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
                   ),
-                ),
-                Text(
-                  label,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -260,7 +272,7 @@ class _StatsShimmer extends StatelessWidget {
         (_) => Card(
           child: Container(
             decoration: BoxDecoration(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+              color: theme.colorScheme.onSurface.withOpacity(0.06),
               borderRadius: BorderRadius.circular(12),
             ),
           ),
@@ -286,13 +298,13 @@ class _EmptyState extends StatelessWidget {
           Icon(
             Icons.inbox_outlined,
             size: 60,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
+            color: theme.colorScheme.onSurface.withOpacity(0.3),
           ),
           const SizedBox(height: 16),
           Text(
             'Belum ada tiket',
             style: theme.textTheme.titleMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              color: theme.colorScheme.onSurface.withOpacity(0.5),
             ),
           ),
           const SizedBox(height: 8),
@@ -300,7 +312,7 @@ class _EmptyState extends StatelessWidget {
             'Buat tiket pertama kamu untuk melaporkan masalah',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              color: theme.colorScheme.onSurface.withOpacity(0.4),
             ),
           ),
           const SizedBox(height: 20),

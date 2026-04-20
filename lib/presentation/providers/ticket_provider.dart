@@ -1,34 +1,39 @@
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/supabase_ticket_datasource.dart';
 import '../../domain/models/ticket_model.dart';
 import '../../domain/models/comment_model.dart';
 import 'auth_provider.dart';
+import '../theme/app_theme.dart';
 
 final ticketDatasourceProvider = Provider((_) => SupabaseTicketDatasource());
 
-// Daftar tiket
 final ticketsProvider = FutureProvider.autoDispose<List<TicketModel>>((ref) async {
   final ds   = ref.read(ticketDatasourceProvider);
   final user = ref.watch(authProvider).value;
   if (user == null) return [];
-  // Helpdesk/admin melihat semua; user biasa hanya miliknya
   return ds.getTickets(userId: user.isHelpdesk ? null : user.id);
 });
 
-// Detail tiket
 final ticketDetailProvider =
     FutureProvider.autoDispose.family<TicketModel, String>((ref, id) {
   return ref.read(ticketDatasourceProvider).getTicketById(id);
 });
 
-// Komentar
 final commentsProvider =
     FutureProvider.autoDispose.family<List<CommentModel>, String>((ref, ticketId) {
   return ref.read(ticketDatasourceProvider).getComments(ticketId);
 });
 
-// Statistik
+final ticketLogsProvider =
+    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, ticketId) {
+  return ref.read(ticketDatasourceProvider).getTicketLogs(ticketId);
+});
+
+final agentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
+  return ref.read(ticketDatasourceProvider).getAgents();
+});
+
 final ticketStatsProvider = FutureProvider.autoDispose<Map<String, int>>((ref) async {
   final ds   = ref.read(ticketDatasourceProvider);
   final user = ref.watch(authProvider).value;
@@ -36,7 +41,6 @@ final ticketStatsProvider = FutureProvider.autoDispose<Map<String, int>>((ref) a
   return ds.getTicketStats(userId: user.isHelpdesk ? null : user.id);
 });
 
-// Notifier untuk aksi tiket
 final ticketActionsProvider = Provider((ref) => TicketActions(ref));
 
 class TicketActions {
@@ -67,15 +71,25 @@ class TicketActions {
   }
 
   Future<void> updateStatus(String ticketId, String status) async {
+    final user = _ref.read(authProvider).value;
     await _ds.updateTicketStatus(ticketId, status);
+    if (user != null) {
+      await _ds.addLog(ticketId, user.fullName, 'mengubah status menjadi ${AppTheme.statusLabel(status)}');
+    }
     _ref.invalidate(ticketsProvider);
     _ref.invalidate(ticketDetailProvider(ticketId));
+    _ref.invalidate(ticketLogsProvider(ticketId));
     _ref.invalidate(ticketStatsProvider);
   }
 
-  Future<void> assignTicket(String ticketId, String assigneeId) async {
+  Future<void> assignTicket(String ticketId, String assigneeId, String assigneeName) async {
+    final user = _ref.read(authProvider).value;
     await _ds.assignTicket(ticketId, assigneeId);
+    if (user != null) {
+      await _ds.addLog(ticketId, user.fullName, 'menugaskan tiket kepada $assigneeName');
+    }
     _ref.invalidate(ticketDetailProvider(ticketId));
+    _ref.invalidate(ticketLogsProvider(ticketId));
   }
 
   Future<void> addComment(String ticketId, String content) async {

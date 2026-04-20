@@ -45,26 +45,6 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
     }
   }
 
-  Future<void> _updateStatus(String newStatus) async {
-    try {
-      await ref.read(ticketActionsProvider).updateStatus(widget.ticketId, newStatus);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Status berhasil diperbarui'),
-            backgroundColor: AppTheme.success,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal: $e'), backgroundColor: AppTheme.danger),
-        );
-      }
-    }
-  }
-
   void _showStatusPicker(BuildContext context) {
     final statuses = [
       SupabaseConstants.statusOpen,
@@ -82,27 +62,56 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Ubah Status',
-                style: Theme.of(ctx)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)),
+            const Text('Ubah Status', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 16),
             ...statuses.map((s) => ListTile(
-                  leading: CircleAvatar(
-                    radius: 8,
-                    backgroundColor: AppTheme.statusColor(s),
-                  ),
-                  title: Text(AppTheme.statusLabel(s)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _updateStatus(s);
-                  },
-                )),
+              leading: Icon(Icons.circle, color: AppTheme.statusColor(s), size: 12),
+              title: Text(AppTheme.statusLabel(s)),
+              onTap: () {
+                Navigator.pop(ctx);
+                ref.read(ticketActionsProvider).updateStatus(widget.ticketId, s);
+              },
+            )),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showAssigneePicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Consumer(
+        builder: (ctx, ref, _) {
+          final agentsAsync = ref.watch(agentsProvider);
+          return agentsAsync.when(
+            loading: () => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
+            error: (e, _) => SizedBox(height: 200, child: Center(child: Text('Error: $e'))),
+            data: (agents) => Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Tugaskan Agen', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 16),
+                  ...agents.map((a) => ListTile(
+                    leading: const Icon(Icons.person_outline),
+                    title: Text(a['full_name']),
+                    subtitle: Text(a['role']),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      ref.read(ticketActionsProvider).assignTicket(widget.ticketId, a['id'], a['full_name']);
+                    },
+                  )),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -112,6 +121,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
     final user         = ref.watch(authProvider).value;
     final ticketAsync  = ref.watch(ticketDetailProvider(widget.ticketId));
     final commentsAsync = ref.watch(commentsProvider(widget.ticketId));
+    final logsAsync    = ref.watch(ticketLogsProvider(widget.ticketId));
     final theme        = Theme.of(context);
 
     return Scaffold(
@@ -121,15 +131,6 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
           onPressed: () => context.pop(),
         ),
         title: const Text('Detail Tiket'),
-        actions: [
-          if (user?.isHelpdesk == true)
-            IconButton(
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: () => ticketAsync.whenData(
-                    (_) => _showStatusPicker(context),
-                  ),
-            ),
-        ],
       ),
       body: ticketAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -150,197 +151,125 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
                           Row(
                             children: [
                               Expanded(
-                                child: Text(
-                                  ticket.title,
-                                  style: theme.textTheme.titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
+                                child: Text(ticket.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                               ),
-                              StatusBadge(status: ticket.status),
+                              GestureDetector(
+                                onTap: user?.isHelpdesk == true ? () => _showStatusPicker(context) : null,
+                                child: StatusBadge(status: ticket.status),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 12),
-                          if (ticket.description.isNotEmpty) ...[
-                            Text(
-                              ticket.description,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.7),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          const Divider(),
+                          Text(ticket.description, style: theme.textTheme.bodyMedium),
+                          const Divider(height: 32),
+                          _InfoRow(icon: Icons.flag_outlined, label: 'Prioritas', value: AppTheme.priorityLabel(ticket.priority), valueColor: AppTheme.priorityColor(ticket.priority)),
                           const SizedBox(height: 8),
-                          _InfoRow(
-                            icon: Icons.flag_outlined,
-                            label: 'Prioritas',
-                            value: AppTheme.priorityLabel(ticket.priority),
-                            valueColor: AppTheme.priorityColor(ticket.priority),
-                          ),
+                          _InfoRow(icon: Icons.person_outline, label: 'Dibuat oleh', value: ticket.creatorName ?? '-'),
                           const SizedBox(height: 8),
-                          _InfoRow(
-                            icon: Icons.person_outline,
-                            label: 'Dibuat oleh',
-                            value: ticket.creatorName ?? '-',
-                          ),
-                          const SizedBox(height: 8),
-                          _InfoRow(
-                            icon: Icons.support_agent,
-                            label: 'Ditangani',
-                            value: ticket.assigneeName ?? 'Belum ditugaskan',
-                          ),
-                          const SizedBox(height: 8),
-                          _InfoRow(
-                            icon: Icons.access_time,
-                            label: 'Dibuat',
-                            value: DateFormatter.format(ticket.createdAt),
-                          ),
-                          const SizedBox(height: 8),
-                          _InfoRow(
-                            icon: Icons.update,
-                            label: 'Diperbarui',
-                            value: DateFormatter.format(ticket.updatedAt),
-                          ),
-                          if (ticket.attachmentUrl != null) ...[
-                            const SizedBox(height: 12),
-                            const Divider(),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                const Icon(Icons.attachment,
-                                    size: 18, color: AppTheme.primary),
-                                const SizedBox(width: 8),
-                                Text('Lampiran',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                        fontWeight: FontWeight.w600)),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                ticket.attachmentUrl!,
-                                height: 180,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.onSurface
-                                        .withOpacity(0.06),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Center(
-                                      child: Icon(Icons.broken_image_outlined)),
+                          Row(
+                            children: [
+                              Expanded(child: _InfoRow(icon: Icons.support_agent, label: 'Ditangani', value: ticket.assigneeName ?? 'Belum ditugaskan')),
+                              if (user?.role == 'admin' || user?.role == 'helpdesk')
+                                TextButton(
+                                  onPressed: () => _showAssigneePicker(context),
+                                  child: const Text('Edit'),
                                 ),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          _InfoRow(icon: Icons.access_time, label: 'Dibuat', value: DateFormatter.format(ticket.createdAt)),
                         ],
                       ),
                     ),
                   ),
 
-                  // Komentar header
+                  // Timeline / Logs
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                    child: Text(
-                      'Komentar & Diskusi',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('Riwayat Tiket', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                  ),
+                  logsAsync.when(
+                    loading: () => const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => const SizedBox(),
+                    data: (logs) => ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: logs.length,
+                      itemBuilder: (ctx, i) {
+                        final log = logs[i];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Column(
+                                children: [
+                                  Icon(Icons.circle, size: 8, color: AppTheme.primary),
+                                  SizedBox(height: 4),
+                                  // logic for line
+                                ],
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    RichText(
+                                      text: TextSpan(
+                                        style: theme.textTheme.bodySmall,
+                                        children: [
+                                          TextSpan(text: log['author_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                          TextSpan(text: ' ${log['action']}'),
+                                        ],
+                                      ),
+                                    ),
+                                    Text(DateFormatter.format(DateTime.parse(log['created_at'])), style: theme.textTheme.labelSmall),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ),
 
-                  // Komentar list
-                  commentsAsync.when(
-                    loading: () => const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                    error: (e, _) => Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text('Gagal memuat komentar: $e'),
-                    ),
-                    data: (comments) {
-                      if (comments.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Center(
-                            child: Text(
-                              'Belum ada komentar. Tulis komentar pertama!',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.45),
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        );
-                      }
-                      return Column(
-                        children: comments
-                            .map((c) => CommentTile(
-                                  comment: c,
-                                  isMe: c.authorId == user?.id,
-                                ))
-                            .toList(),
-                      );
-                    },
+                  const Divider(height: 32),
+
+                  // Komentar header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: Text('Komentar', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                   ),
-                  const SizedBox(height: 16),
+
+                  commentsAsync.when(
+                    loading: () => const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => Text('Error: $e'),
+                    data: (comments) => Column(
+                      children: comments.map((c) => CommentTile(comment: c, isMe: c.authorId == user?.id)).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 80),
                 ],
               ),
             ),
 
             // Input komentar
             Container(
-              padding: EdgeInsets.fromLTRB(
-                  12, 8, 12, MediaQuery.of(context).viewInsets.bottom + 12),
-              decoration: BoxDecoration(
-                color: theme.scaffoldBackgroundColor,
-                border: Border(
-                  top: BorderSide(
-                    color: theme.colorScheme.outline.withOpacity(0.2),
-                  ),
-                ),
-              ),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: theme.cardColor, border: Border(top: BorderSide(color: theme.dividerColor))),
               child: Row(
                 children: [
                   Expanded(
                     child: TextField(
                       controller: _commentCtrl,
-                      decoration: InputDecoration(
-                        hintText: 'Tulis komentar...',
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.outline.withOpacity(0.3),
-                          ),
-                        ),
-                      ),
-                      minLines: 1,
-                      maxLines: 3,
+                      decoration: const InputDecoration(hintText: 'Tulis komentar...'),
                     ),
                   ),
                   const SizedBox(width: 8),
                   _sendingComment
-                      ? const SizedBox(
-                          width: 44,
-                          height: 44,
-                          child: Center(
-                              child: CircularProgressIndicator(strokeWidth: 2.5)),
-                        )
-                      : IconButton.filled(
-                          onPressed: _sendComment,
-                          icon: const Icon(Icons.send_rounded),
-                          style: IconButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
+                      ? const CircularProgressIndicator()
+                      : IconButton.filled(onPressed: _sendComment, icon: const Icon(Icons.send)),
                 ],
               ),
             ),
@@ -357,39 +286,17 @@ class _InfoRow extends StatelessWidget {
   final String value;
   final Color? valueColor;
 
-  const _InfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
+  const _InfoRow({required this.icon, required this.label, required this.value, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: theme.colorScheme.onSurface.withOpacity(0.45)),
+        Icon(icon, size: 16, color: theme.hintColor),
         const SizedBox(width: 8),
-        SizedBox(
-          width: 90,
-          child: Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: valueColor,
-            ),
-          ),
-        ),
+        SizedBox(width: 80, child: Text(label, style: theme.textTheme.bodySmall)),
+        Expanded(child: Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: valueColor, fontSize: 13))),
       ],
     );
   }
