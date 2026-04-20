@@ -8,11 +8,93 @@ import '../theme/app_theme.dart';
 
 final ticketDatasourceProvider = Provider((_) => SupabaseTicketDatasource());
 
-final ticketsProvider = FutureProvider.autoDispose<List<TicketModel>>((ref) async {
-  final ds   = ref.read(ticketDatasourceProvider);
-  final user = ref.watch(authProvider).value;
-  if (user == null) return [];
-  return ds.getTickets(userId: user.isHelpdesk ? null : user.id);
+// Pagination State (NFR 4.1 Lazy Loading)
+class TicketListState {
+  final List<TicketModel> tickets;
+  final int page;
+  final bool isLoadingMore;
+  final bool hasMore;
+
+  TicketListState({
+    required this.tickets,
+    required this.page,
+    required this.isLoadingMore,
+    required this.hasMore,
+  });
+
+  TicketListState copyWith({
+    List<TicketModel>? tickets,
+    int? page,
+    bool? isLoadingMore,
+    bool? hasMore,
+  }) => TicketListState(
+    tickets: tickets ?? this.tickets,
+    page: page ?? this.page,
+    isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+    hasMore: hasMore ?? this.hasMore,
+  );
+}
+
+class TicketListNotifier extends StateNotifier<AsyncValue<TicketListState>> {
+  final SupabaseTicketDatasource _ds;
+  final Ref _ref;
+
+  TicketListNotifier(this._ds, this._ref) : super(const AsyncValue.loading()) {
+    refresh();
+  }
+
+  Future<void> refresh() async {
+    state = const AsyncValue.loading();
+    final user = _ref.read(authProvider).value;
+    try {
+      final tickets = await _ds.getTickets(
+        userId: user?.isHelpdesk == true ? null : user?.id,
+        page: 0,
+      );
+      state = AsyncValue.data(TicketListState(
+        tickets: tickets,
+        page: 0,
+        isLoadingMore: false,
+        hasMore: tickets.length >= 10,
+      ));
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+
+  Future<void> loadMore() async {
+    final current = state.value;
+    if (current == null || current.isLoadingMore || !current.hasMore) return;
+
+    state = AsyncValue.data(current.copyWith(isLoadingMore: true));
+    final user = _ref.read(authProvider).value;
+    
+    try {
+      final nextPage = current.page + 1;
+      final moreTickets = await _ds.getTickets(
+        userId: user?.isHelpdesk == true ? null : user?.id,
+        page: nextPage,
+      );
+      
+      state = AsyncValue.data(current.copyWith(
+        tickets: [...current.tickets, ...moreTickets],
+        page: nextPage,
+        isLoadingMore: false,
+        hasMore: moreTickets.length >= 10,
+      ));
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}
+
+final ticketListProvider = StateNotifierProvider.autoDispose<TicketListNotifier, AsyncValue<TicketListState>>((ref) {
+  return TicketListNotifier(ref.read(ticketDatasourceProvider), ref);
+});
+
+// Backward compatibility or for Dashboard
+final ticketsProvider = Provider.autoDispose<AsyncValue<List<TicketModel>>>((ref) {
+  return ref.watch(ticketListProvider).whenData((value) => value.tickets);
 });
 
 final ticketDetailProvider =
@@ -66,7 +148,7 @@ class TicketActions {
       attachmentBytes: attachmentBytes,
       fileName: fileName,
     );
-    _ref.invalidate(ticketsProvider);
+    _ref.read(ticketListProvider.notifier).refresh();
     _ref.invalidate(ticketStatsProvider);
   }
 
@@ -76,7 +158,7 @@ class TicketActions {
     if (user != null) {
       await _ds.addLog(ticketId, user.fullName, 'mengubah status menjadi ${AppTheme.statusLabel(status)}');
     }
-    _ref.invalidate(ticketsProvider);
+    _ref.read(ticketListProvider.notifier).refresh();
     _ref.invalidate(ticketDetailProvider(ticketId));
     _ref.invalidate(ticketLogsProvider(ticketId));
     _ref.invalidate(ticketStatsProvider);
